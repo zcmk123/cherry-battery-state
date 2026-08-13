@@ -1,114 +1,114 @@
-﻿# Cherry 键盘电量托盘工具
+# Cherry Keyboard Battery Tray Tool
 
-Windows 系统托盘工具，实时显示 Cherry 无线键盘电量。**无需安装 Cherry 官方软件**，直接读取 USB 接收器（dongle）的 HID 数据。
+A Windows system tray tool that displays the battery level of Cherry wireless keyboards in real time. **No Cherry official software required** - reads HID data directly from the USB receiver (dongle).
 
-## 特性
+## Features
 
-- 常驻系统托盘，实时显示电量图标
-- 通过 HID 协议直接读取 dongle 数据，不依赖 Cherry Utility
-- 自动检测设备名称（如 CHERRY MX 2.0S Dongle）
-- 6 档电池图标可视化电量
-- 低电量自动提醒（≤20%）
-- 休眠检测（键盘闲置时图标变暗）
-- 轮询间隔可调（5 / 10 / 20 / 30 / 60 秒，默认 30 秒）
-- 配置持久化，重启后自动恢复
-- 设备未连接时显示红叉提示
+- Resides in the system tray, showing real-time battery level
+- Reads dongle data directly via HID protocol, no Cherry Utility needed
+- Auto-detects device name (e.g., CHERRY MX 2.0S Dongle)
+- 6-level battery icon visualization
+- Low battery notification (<=20%)
+- Sleep detection (icon dims when keyboard is idle)
+- Configurable polling interval (5 / 10 / 20 / 30 / 60 seconds, default 30s)
+- Persistent configuration, auto-restored on restart
+- Red cross indicator when device is disconnected
 
-## 支持设备
+## Supported Devices
 
-已在以下设备测试通过：
+Tested with:
 
-- Cherry MX 2.0S（VID=0x046A, PID=0x01AC）
+- Cherry MX 2.0S (VID=0x046A, PID=0x01AC)
 
-理论上支持所有使用 Cherry dongle 的键盘，只要 HID 枚举能找到 usage_page=0xFF1C 的 vendor-specific 接口即可。
+Theoretically supports all Cherry dongle-based keyboards, as long as the HID enumeration can find a vendor-specific interface with `usage_page=0xFF1C`.
 
-## 下载使用
+## Download
 
-### 方式一：直接下载 exe（推荐）
+### Option 1: Download the exe (Recommended)
 
-从 [Releases](../../releases) 页面下载 cherry_battery.exe，双击运行即可，无需安装 Python 环境。
+Download `cherry_battery.exe` from the [Releases](../../releases) page. Double-click to run - no Python environment required.
 
-首次运行会在 exe 同目录生成 config.json 保存配置。
+A `config.json` file is generated next to the exe on first run to save settings.
 
-### 方式二：从源码运行
+### Option 2: Run from source
 
 ```bash
-# 依赖
+# Install dependencies
 pip install hid pillow pystray
 
-# 还需要 hidapi.dll，放到脚本目录或通过系统 PATH 加载
-# 下载地址: https://github.com/libusb/hidapi/releases
+# You also need hidapi.dll - place it in the script directory or load via system PATH
+# Download: https://github.com/libusb/hidapi/releases
 
-# 运行
+# Run
 python cherry_battery.py
 ```
 
-> 脚本默认从 ``E:\hidap\x64`` 加载 hidapi.dll，如你的路径不同，请修改 cherry_battery.py 顶部的 ``os.add_dll_directory()`` 调用。
+> The script loads hidapi.dll from `E:\hidap\x64` by default. If your path differs, modify the `os.add_dll_directory()` call at the top of `cherry_battery.py`.
 
-## 右键菜单
+## Tray Menu
 
-| 菜单项 | 功能 |
-|--------|------|
-| 刷新 | 手动查询当前电量 |
-| 轮询间隔 | 切换自动查询频率（5/10/20/30/60 秒） |
-| 退出 | 关闭程序 |
+| Menu Item | Action |
+|-----------|--------|
+| Refresh | Manually query current battery level |
+| Polling Interval | Switch auto-query frequency (5/10/20/30/60s) |
+| Exit | Close the application |
 
-## 工作原理
+## How It Works
 
-1. 通过 ``hid.enumerate()`` 查找 Cherry dongle 的 vendor-specific 接口（Col04, usage_page=0xFF1C）
-2. 发送电量查询命令 ``04 20 00 1A 06``（64 字节 Output Report）
-3. 读取 dongle 返回的状态消息，``byte[8]`` 即电量百分比
-4. 后台线程按设定间隔轮询，更新托盘图标和 tooltip
+1. Uses `hid.enumerate()` to find the Cherry dongle's vendor-specific interface (Col04, usage_page=0xFF1C)
+2. Sends a battery query command `04 20 00 1A 06` (64-byte Output Report)
+3. Reads the status message returned by the dongle; `byte[8]` is the battery percentage
+4. A background thread polls at the configured interval and updates the tray icon and tooltip
 
-命令序列通过 Frida 逆向分析 Cherry 官方软件的 HID 通信得出，详见 [开发笔记](#开发笔记)。
+The command sequence was obtained by reverse-engineering the Cherry Utility's HID communication using Frida. See [Development Notes](#development-notes).
 
-## 会对键盘造成干扰吗
+## Will It Interfere with the Keyboard?
 
-不会。工具只操作 Col04 管理接口，不触碰键盘输入所在的 Col01 接口；每次查询只发 1 条 64 字节命令、收 1 条回复，耗时 <1ms，30 秒才查一次，对续航和输入的影响可忽略。
+No. The tool only accesses the Col04 management interface, not the Col01 interface where keyboard input flows. Each query sends a single 64-byte command and receives one reply, taking <1ms. With 30-second polling, the impact on battery life and typing is negligible.
 
-## 从源码打包 exe
+## Build from Source
 
 ```bash
 pip install pyinstaller
 python -m PyInstaller cherry_battery.spec --noconfirm
 ```
 
-打包产物在 ``dist/cherry_battery.exe``，包含 hidapi.dll 和 7 个电池图标 PNG。
+The output is in `dist/cherry_battery.exe`, bundled with hidapi.dll and 7 battery icon PNGs. The exe icon uses `logo.ico`.
 
-## 项目结构
+## Project Structure
 
 ```
 cherry-battery/
-├── cherry_battery.py     # 主程序
-├── cherry_battery.spec   # PyInstaller 打包配置
-├── icon_0.png ~ icon_6.png  # 电池图标（0=空, 3=充电, 6=满）
-├── img/                  # 原始图标素材
-└── dist/
-    └── cherry_battery.exe  # 打包好的可执行文件
+├── cherry_battery.py        # Main application
+├── cherry_battery.spec      # PyInstaller config
+├── logo.png / logo.ico      # App logo (exe icon)
+├── icon_0.png ~ icon_6.png  # Battery icons (0=empty, 3=charging, 6=full)
+└── README.md                # This file (English)
+└── README.zh-CN.md          # Chinese documentation
 ```
 
-## 开发笔记
+## Development Notes
 
-### 如何逆向 Cherry 官方软件
+### Reverse-Engineering Cherry Utility
 
-Cherry Utility 通过 HID 与 dongle 通信，但官方软件不开放协议文档。为了不依赖官方软件，使用 [Frida](https://frida.re/) 动态插桩抓取通信内容：
+Cherry Utility communicates with the dongle via HID, but the protocol is not publicly documented. To eliminate the dependency on the official software, [Frida](https://frida.re/) was used for dynamic instrumentation:
 
-1. 用 Frida spawn 模式启动 Cherry Utility
-2. Hook ``WriteFile`` 和 ``ReadFile`` API，记录所有 HID 读写
-3. 分析抓到的数据包，定位电量查询命令
+1. Launch Cherry Utility in Frida spawn mode
+2. Hook `WriteFile` and `ReadFile` APIs to log all HID I/O
+3. Analyze captured packets to locate the battery query command
 
-关键发现：Cherry 软件用 **Output Report**（而非 Feature Report）发送命令，所以单纯监听 Input Report 只能看到回显，会漏掉发送的命令。电量查询命令只有一条：``04 20 00 1A 06``。
+Key finding: Cherry Utility sends commands via **Output Report** (not Feature Report), so simply listening to Input Report only captures echoes and misses the actual commands. The battery query is a single command: `04 20 00 1A 06`.
 
-### 为什么默认 30 秒轮询
+### Why 30-Second Polling?
 
-Cherry 官方软件是每 5 秒查一次电量 + 每 3 秒发一次心跳，频率是本工具的 10 倍。30 秒间隔下键盘的无线功耗主要由按键传输决定，电量查询的额外开销测量不出来。如需更省电可在右键菜单调到 60 秒。
+Cherry Utility queries battery every 5 seconds plus a heartbeat every 3 seconds - 10x more frequent than this tool. At 30-second intervals, the keyboard's wireless power consumption is dominated by keystroke transmission; the overhead of battery queries is unmeasurable. Adjust to 60 seconds via the tray menu if you want to be even more conservative.
 
-## 许可证
+## License
 
 MIT License
 
-## 致谢
+## Acknowledgements
 
-- [hidapi](https://github.com/libusb/hidapi) - 跨平台 HID 通信库
-- [pystray](https://github.com/moses-palmer/pystray) - Python 系统托盘库
-- [Pillow](https://python-pillow.org/) - 图像处理库
+- [hidapi](https://github.com/libusb/hidapi) - Cross-platform HID communication library
+- [pystray](https://github.com/moses-palmer/pystray) - Python system tray library
+- [Pillow](https://python-pillow.org/) - Image processing library
