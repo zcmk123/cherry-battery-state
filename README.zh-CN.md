@@ -2,6 +2,8 @@
 
 Windows 系统托盘工具，实时显示 Cherry 无线键盘电量。**无需安装 Cherry 官方软件**，直接读取 USB 接收器（dongle）的 HID 数据。
 
+> 本项目完全使用 [Trae](https://www.trae.ai/) 配合 **GLM-5.2** 模型完成 —— 从逆向分析 Cherry 官方软件的 HID 协议，到实现托盘应用、打包 exe，全程无人工编写代码。
+
 [English Documentation](README.md)
 
 ## 特性
@@ -38,14 +40,11 @@ Windows 系统托盘工具，实时显示 Cherry 无线键盘电量。**无需�
 # 依赖
 pip install hid pillow pystray
 
-# 还需要 hidapi.dll，放到脚本目录或通过系统 PATH 加载
-# 下载地址: https://github.com/libusb/hidapi/releases
+# hidapi.dll 已随源码放在 dlls/ 目录，无需额外下载
 
 # 运行
 python cherry_battery.py
 ```
-
-> 脚本默认从 `E:\hidap\x64` 加载 hidapi.dll，如你的路径不同，请修改 cherry_battery.py 顶部的 `os.add_dll_directory()` 调用。
 
 ## 右键菜单
 
@@ -53,6 +52,8 @@ python cherry_battery.py
 |--------|------|
 | 刷新 | 手动查询当前电量 |
 | 轮询间隔 | 切换自动查询频率（5/10/20/30/60 秒） |
+| 语言 | 切换界面语言（英文 / 中文，默认英文） |
+| 关于 | 显示应用信息 |
 | 退出 | 关闭程序 |
 
 ## 工作原理
@@ -75,7 +76,7 @@ pip install pyinstaller
 python -m PyInstaller cherry_battery.spec --noconfirm
 ```
 
-打包产物在 `dist/cherry_battery.exe`，包含 hidapi.dll 和 7 个电池图标 PNG。exe 图标使用 `logo.ico`。
+打包产物在 `dist/cherry_battery.exe`，包含 hidapi.dll 和 7 个电池图标 PNG。exe 图标使用 `imgs/logo.ico`。
 
 ## 项目结构
 
@@ -83,9 +84,12 @@ python -m PyInstaller cherry_battery.spec --noconfirm
 cherry-battery/
 ├── cherry_battery.py        # 主程序
 ├── cherry_battery.spec      # PyInstaller 打包配置
-├── logo.png / logo.ico      # 应用 logo（exe 图标）
-├── icon_0.png ~ icon_6.png  # 电池图标（0=空, 3=充电, 6=满）
-└── README.md                # 英文文档（主）
+├── dlls/
+│   └── hidapi.dll           # HID 通信库（源码运行和打包都用它）
+├── imgs/
+│   ├── logo.ico             # 应用 logo（exe 图标）
+│   └── icon_0~6.png         # 电池图标（0=空, 3=充电, 6=满）
+├── README.md                # 英文文档（主）
 └── README.zh-CN.md          # 中文文档
 ```
 
@@ -108,10 +112,6 @@ Cherry 官方软件是每 5 秒查一次电量 + 每 3 秒发一次心跳，频�
 ## 许可证
 
 MIT License
-
-## 构建工具
-
-本项目完全使用 [Trae](https://www.trae.ai/) 配合 **GLM-5.2** 模型完成 —— 从逆向分析 Cherry 官方软件的 HID 协议，到实现托盘应用、打包 exe，全程无人工编写代码。
 
 ## 致谢
 

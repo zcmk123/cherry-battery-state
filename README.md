@@ -2,6 +2,10 @@
 
 A Windows system tray tool that displays the battery level of Cherry wireless keyboards in real time. **No Cherry official software required** - reads HID data directly from the USB receiver (dongle).
 
+> Built entirely with [Trae](https://www.trae.ai/) + **GLM-5.2** - from reverse-engineering the Cherry Utility's HID protocol to implementing the tray app and packaging the exe. No manual coding was involved.
+
+[中文文档](README.zh-CN.md)
+
 ## Features
 
 - Resides in the system tray, showing real-time battery level
@@ -36,14 +40,11 @@ A `config.json` file is generated next to the exe on first run to save settings.
 # Install dependencies
 pip install hid pillow pystray
 
-# You also need hidapi.dll - place it in the script directory or load via system PATH
-# Download: https://github.com/libusb/hidapi/releases
+# hidapi.dll is already bundled in the dlls/ folder for source runs
 
 # Run
 python cherry_battery.py
 ```
-
-> The script loads hidapi.dll from `E:\hidap\x64` by default. If your path differs, modify the `os.add_dll_directory()` call at the top of `cherry_battery.py`.
 
 ## Tray Menu
 
@@ -51,6 +52,8 @@ python cherry_battery.py
 |-----------|--------|
 | Refresh | Manually query current battery level |
 | Polling Interval | Switch auto-query frequency (5/10/20/30/60s) |
+| Language | Switch UI language (English / Chinese, default English) |
+| About | Show application info |
 | Exit | Close the application |
 
 ## How It Works
@@ -73,7 +76,7 @@ pip install pyinstaller
 python -m PyInstaller cherry_battery.spec --noconfirm
 ```
 
-The output is in `dist/cherry_battery.exe`, bundled with hidapi.dll and 7 battery icon PNGs. The exe icon uses `logo.ico`.
+The output is in `dist/cherry_battery.exe`, bundled with hidapi.dll and 7 battery icon PNGs. The exe icon uses `imgs/logo.ico`.
 
 ## Project Structure
 
@@ -81,9 +84,12 @@ The output is in `dist/cherry_battery.exe`, bundled with hidapi.dll and 7 batter
 cherry-battery/
 ├── cherry_battery.py        # Main application
 ├── cherry_battery.spec      # PyInstaller config
-├── logo.png / logo.ico      # App logo (exe icon)
-├── icon_0.png ~ icon_6.png  # Battery icons (0=empty, 3=charging, 6=full)
-└── README.md                # This file (English)
+├── dlls/
+│   └── hidapi.dll           # HID library (bundled for source runs and exe packaging)
+├── imgs/
+│   ├── logo.ico             # App logo (exe icon)
+│   └── icon_0~6.png         # Battery icons (0=empty, 3=charging, 6=full)
+├── README.md                # This file (English)
 └── README.zh-CN.md          # Chinese documentation
 ```
 
@@ -106,10 +112,6 @@ Cherry Utility queries battery every 5 seconds plus a heartbeat every 3 seconds 
 ## License
 
 MIT License
-
-## Built With
-
-This project was built entirely using [Trae](https://www.trae.ai/) with the **GLM-5.2** model - from reverse-engineering the Cherry Utility's HID protocol to implementing the tray app and packaging the exe. No manual coding was involved.
 
 ## Acknowledgements
 
