@@ -107,6 +107,10 @@ Cherry Utility queries battery every 5 seconds plus a heartbeat every 3 seconds 
 
 MIT License
 
+## Built With
+
+This project was built entirely using [Trae](https://www.trae.ai/) with the **GLM-5.2** model - from reverse-engineering the Cherry Utility's HID protocol to implementing the tray app and packaging the exe. No manual coding was involved.
+
 ## Acknowledgements
 
 - [hidapi](https://github.com/libusb/hidapi) - Cross-platform HID communication library

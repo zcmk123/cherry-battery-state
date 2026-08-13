@@ -109,6 +109,10 @@ Cherry 官方软件是每 5 秒查一次电量 + 每 3 秒发一次心跳，频�
 
 MIT License
 
+## 构建工具
+
+本项目完全使用 [Trae](https://www.trae.ai/) 配合 **GLM-5.2** 模型完成 —— 从逆向分析 Cherry 官方软件的 HID 协议，到实现托盘应用、打包 exe，全程无人工编写代码。
+
 ## 致谢
 
 - [hidapi](https://github.com/libusb/hidapi) - 跨平台 HID 通信库
