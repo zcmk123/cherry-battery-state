@@ -1,10 +1,12 @@
 name: Build and Release
 
 on:
-  push:
-    tags:
-      - 'v*'          # 推送 v 开头的 tag 时触发，如 v1.0.0
-  workflow_dispatch:   # 也支持手动触发
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号（如 v1.0.0，作为 Release 标题和 tag）'
+        required: true
+        default: 'v1.0.0'
 
 permissions:
   contents: write      # 创建 Release 需要写权限
@@ -33,8 +35,7 @@ jobs:
       - name: Package artifact
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}"
-          if ([string]::IsNullOrEmpty($tag) -or $tag -eq "main") { $tag = "dev" }
+          $tag = "${{ github.event.inputs.version }}"
           $zipName = "cherry_battery-$tag-windows-x64.zip"
           Compress-Archive -Path dist\cherry_battery.exe -DestinationPath $zipName
           Write-Output "ZIP_NAME=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -43,6 +44,8 @@ jobs:
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.inputs.version }}
+          name: ${{ github.event.inputs.version }}
           files: ${{ env.ZIP_NAME }}
           generate_release_notes: true
           draft: false
