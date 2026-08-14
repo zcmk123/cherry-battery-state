@@ -1,0 +1,49 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'          # 推送 v 开头的 tag 时触发，如 v1.0.0
+  workflow_dispatch:   # 也支持手动触发
+
+permissions:
+  contents: write      # 创建 Release 需要写权限
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install hid pillow pystray pyinstaller
+
+      - name: Build exe
+        run: python -m PyInstaller cherry_battery.spec --noconfirm
+
+      - name: Package artifact
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ([string]::IsNullOrEmpty($tag) -or $tag -eq "main") { $tag = "dev" }
+          $zipName = "cherry_battery-$tag-windows-x64.zip"
+          Compress-Archive -Path dist\cherry_battery.exe -DestinationPath $zipName
+          Write-Output "ZIP_NAME=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Created $zipName"
+
+      - name: Upload Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_NAME }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
