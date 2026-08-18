@@ -299,6 +299,17 @@ def get_device_name():
     return "Cherry Keyboard"
 
 
+def is_wired_keyboard(dev):
+    """判断枚举项是否为有线模式键盘（插充电线后键盘以新 PID 枚举的设备）"""
+    if dev["product_id"] == CHERRY_PID:
+        return False  # dongle 本身
+    product = (dev.get("product_string") or "").lower()
+    if "keyboard" in product:
+        return True
+    # 产品名不可用时兜底：标准键盘 usage（Generic Desktop / Keyboard）
+    return dev.get("usage_page") == 0x0001 and dev.get("usage") == 0x0006
+
+
 def read_battery_once(timeout=3.0):
     """
     发送电量查询命令并读取回复。
@@ -495,6 +506,26 @@ class TrayApp:
             if self._wait.wait(timeout=self.poll_interval):
                 self._wait.clear()
 
+    def watch_loop(self):
+        """USB 设备监视线程：每秒枚举一次（纯本地枚举，不打开设备、零无线流量）。
+        插充电线后键盘立即以有线模式新设备枚举，拔线即消失；
+        dongle 插拔同样在此检测。检测到变化立即唤醒轮询线程刷新，
+        充电图标切换无需等待下一个轮询周期。"""
+        prev_wired = None
+        prev_dongle = None
+        while True:
+            try:
+                devs = hid.enumerate(CHERRY_VID, 0)
+            except Exception:
+                devs = []
+            wired = any(is_wired_keyboard(d) for d in devs)
+            dongle = any(d["product_id"] == CHERRY_PID for d in devs)
+            if ((prev_wired is not None and wired != prev_wired)
+                    or (prev_dongle is not None and dongle != prev_dongle)):
+                self._wait.set()
+            prev_wired, prev_dongle = wired, dongle
+            time.sleep(1)
+
     def on_refresh(self, icon, item):
         """手动刷新"""
         def do_refresh():
@@ -616,6 +647,7 @@ class TrayApp:
         )
 
         threading.Thread(target=self.poll_loop, daemon=True).start()
+        threading.Thread(target=self.watch_loop, daemon=True).start()
         self.icon.run()
 
 

@@ -13,6 +13,7 @@ A Windows system tray tool that displays the battery level of Cherry wireless ke
 - Auto-detects device name (e.g., CHERRY MX 2.0S Dongle)
 - 6-level battery icon visualization
 - Charging detection - icon switches to the charging style and the tooltip shows "Charging" while the USB cable is connected
+- Instant charging switch (~1s): a lightweight USB watcher detects cable plug/unplug and refreshes immediately - no extra wireless traffic, no need to shorten the polling interval
 - Low battery notification (<=20%), suppressed while charging
 - Sleep detection (icon dims when keyboard is idle)
 - Configurable polling interval (5 / 10 / 20 / 30 / 60 seconds, default 30s)
@@ -63,6 +64,7 @@ python cherry_battery.py
 2. Sends a battery query command `04 20 00 1A 06` (64-byte Output Report)
 3. Reads the status message returned by the dongle; `byte[8]` is the battery percentage, `byte[9]` is the charging flag (non-zero = charging)
 4. A background thread polls at the configured interval and updates the tray icon and tooltip
+5. A separate watcher thread enumerates USB devices every second (pure local enumeration, no HID opens). Plugging the charging cable makes the keyboard enumerate in wired mode (new PID), which instantly wakes the poll thread to refresh - so charging state switches in ~1s without waiting for the next poll cycle
 
 The command sequence was obtained by reverse-engineering the Cherry Utility's HID communication using Frida. See [Development Notes](#development-notes).
 
