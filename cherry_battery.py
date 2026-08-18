@@ -33,12 +33,14 @@ LOW_BATTERY_THRESHOLD = 20
 CONFIG_FILE = os.path.join(_APP_DIR, "config.json")
 
 # 电量查询命令：发送到 Col04，dongle 回复 0x20 消息，byte[8]=电量百分比
-# 通过 Frida 抓包 Cherry 软件获得，无需 Cherry 软件运行
+# byte[9] 非零表示充电中（插线/不插线实测对比得出），无需 Cherry 软件运行
 BATTERY_QUERY = bytes([0x04, 0x20, 0x00, 0x1A, 0x06] + [0] * 59)
 
 DEFAULT_LANG = "en"  # 默认英文
 LANG_CHOICES = ["en", "zh"]
 GITHUB_URL = "https://github.com/zcmk123"
+AUTOSTART_REG_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+AUTOSTART_REG_NAME = "CherryBattery"
 
 # ============================================================
 #  多语言文本
@@ -51,12 +53,16 @@ TRANSLATIONS = {
         "language": "Language",
         "about": "About",
         "github": "GitHub",
+        "autostart": "Start with Windows",
+        "autostart_enabled": "Start with Windows: enabled",
+        "autostart_disabled": "Start with Windows: disabled",
         "exit": "Exit",
         "seconds": "sec",
         "starting": "Starting...",
         "not_connected": "Not Connected",
         "waiting_data": "Waiting for data...",
         "sleeping": "(Sleeping)",
+        "charging": "Charging",
         "low_battery_notify": "Keyboard battery low: {battery}%, please charge",
         "current_battery": "Current battery: {battery}%",
         "no_receiver": "USB receiver not detected",
@@ -67,7 +73,7 @@ TRANSLATIONS = {
         "about_title": "About Cherry Battery",
         "about_text": (
             "Cherry Keyboard Battery Tray Tool\n"
-            "Version: 1.0\n"
+            "Version: 1.1\n"
             "Author: Doublebird\n"
             "GitHub: https://github.com/zcmk123\n"
             "Device: {device}\n\n"
@@ -83,12 +89,16 @@ TRANSLATIONS = {
         "language": "语言",
         "about": "关于",
         "github": "GitHub",
+        "autostart": "开机启动",
+        "autostart_enabled": "已设置开机启动",
+        "autostart_disabled": "已取消开机启动",
         "exit": "退出",
         "seconds": "秒",
         "starting": "启动中...",
         "not_connected": "未连接",
         "waiting_data": "等待数据...",
         "sleeping": "(休眠)",
+        "charging": "充电中",
         "low_battery_notify": "键盘电量低: {battery}%，请及时充电",
         "current_battery": "当前电量: {battery}%",
         "no_receiver": "未检测到 USB 接收器",
@@ -99,7 +109,7 @@ TRANSLATIONS = {
         "about_title": "关于 Cherry 电量工具",
         "about_text": (
             "Cherry 键盘电量托盘工具\n"
-            "版本: 1.0\n"
+            "版本: 1.1\n"
             "作者: Doublebird\n"
             "GitHub: https://github.com/zcmk123\n"
             "设备: {device}\n\n"
@@ -212,6 +222,52 @@ def save_config(cfg):
 
 
 # ============================================================
+#  开机启动（Windows 注册表）
+# ============================================================
+
+def get_autostart_command():
+    """返回写入注册表的启动命令：exe 模式直接 exe 路径，源码模式 pythonw + 脚本"""
+    if getattr(sys, "frozen", False):
+        return f'"{sys.executable}"'
+    return f'"{sys.executable}" "{os.path.abspath(__file__)}"'
+
+
+def is_autostart_enabled():
+    """读取注册表判断是否已设置开机启动"""
+    try:
+        import winreg
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, AUTOSTART_REG_KEY, 0, winreg.KEY_READ
+        ) as key:
+            winreg.QueryValueEx(key, AUTOSTART_REG_NAME)
+            return True
+    except FileNotFoundError:
+        return False
+    except Exception:
+        return False
+
+
+def set_autostart(enabled):
+    """启用或禁用开机启动"""
+    try:
+        import winreg
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, AUTOSTART_REG_KEY, 0, winreg.KEY_SET_VALUE
+        ) as key:
+            if enabled:
+                winreg.SetValueEx(key, AUTOSTART_REG_NAME, 0,
+                                  winreg.REG_SZ, get_autostart_command())
+            else:
+                try:
+                    winreg.DeleteValue(key, AUTOSTART_REG_NAME)
+                except FileNotFoundError:
+                    pass
+        return True
+    except Exception:
+        return False
+
+
+# ============================================================
 #  HID 通信层
 # ============================================================
 
@@ -246,21 +302,21 @@ def get_device_name():
 def read_battery_once(timeout=3.0):
     """
     发送电量查询命令并读取回复。
-    打开 Col04 -> 发送 0x20 查询 -> 读取 0x20 回复 -> 返回电量。
-    返回: (battery:int, keyboard_active:bool)
-      battery=None, active=None  -> 设备不可用
-      battery=None, active=False -> 收到数据但无电量回复
-      battery=int,   active=True -> 成功读取电量
+    打开 Col04 -> 发送 0x20 查询 -> 读取 0x20 回复 -> 返回电量和充电状态。
+    返回: (battery:int, charging:bool, keyboard_active:bool)
+      battery=None, charging=None, active=None  -> 设备不可用
+      battery=None, charging=None, active=False -> 收到数据但无电量回复
+      battery=int,   charging=bool, active=True -> 成功读取电量
     """
     dev_info = find_col04()
     if not dev_info:
-        return None, None
+        return None, None, None
 
     try:
         dev = hid.Device(path=dev_info["path"])
         dev.nonblocking = True
     except Exception:
-        return None, None
+        return None, None, None
 
     try:
         # 排空缓冲区
@@ -279,7 +335,7 @@ def read_battery_once(timeout=3.0):
         while time.time() - start < timeout:
             try:
                 data = dev.read(256, timeout=300)
-                if not data or len(data) < 9:
+                if not data or len(data) < 10:
                     continue
                 if not any(b != 0 for b in data):
                     continue
@@ -287,13 +343,13 @@ def read_battery_once(timeout=3.0):
                 got_any_data = True
                 msg_type = data[1]
                 if msg_type == 0x20 and data[8] > 0:
-                    return data[8], True
+                    return data[8], data[9] != 0, True
             except Exception:
                 continue
 
         if got_any_data:
-            return None, False
-        return None, None
+            return None, None, False
+        return None, None, None
     finally:
         dev.close()
 
@@ -321,7 +377,7 @@ for _i in range(7):
 _BATTERY_LEVEL_ICONS = [0, 1, 2, 4, 5, 6]
 
 
-def create_icon_image(battery, sleeping=False):
+def create_icon_image(battery, sleeping=False, charging=False):
     """根据电量返回对应的电池图标 PNG"""
     if battery is None:
         # 未连接：空电池图标 + 红叉
@@ -332,6 +388,10 @@ def create_icon_image(battery, sleeping=False):
         draw.line([cx - r, cy - r, cx + r, cy + r], fill=(220, 60, 50), width=3)
         draw.line([cx - r, cy + r, cx + r, cy - r], fill=(220, 60, 50), width=3)
         return img
+
+    if charging and _BATTERY_ICONS[3]:
+        # 充电中：使用充电图标（充电时键盘由线缆供电，不会休眠）
+        return _BATTERY_ICONS[3].copy()
 
     # 6 档电量映射到图标
     level = min(5, battery * 6 // 100)
@@ -357,6 +417,7 @@ class TrayApp:
         self.battery = None
         self.connected = False
         self.sleeping = True
+        self.charging = False
         self.icon = None
         self._lock = threading.Lock()
         self._notified_low = False
@@ -377,11 +438,13 @@ class TrayApp:
             return f"{self.device_name}: {tr(self.lang, 'not_connected')}"
         if self.battery is None:
             return f"{self.device_name}: {tr(self.lang, 'waiting_data')}"
+        if self.charging:
+            return f"{self.device_name}: {self.battery}% ({tr(self.lang, 'charging')})"
         if self.sleeping:
             return f"{self.device_name}: {self.battery}% {tr(self.lang, 'sleeping')}"
         return f"{self.device_name}: {self.battery}%"
 
-    def update_state(self, battery=None, connected=None, sleeping=None):
+    def update_state(self, battery=None, connected=None, sleeping=None, charging=None):
         """更新状态并刷新图标"""
         with self._lock:
             if connected is not None:
@@ -390,12 +453,15 @@ class TrayApp:
                 self.battery = battery
             if sleeping is not None:
                 self.sleeping = sleeping
+            if charging is not None:
+                self.charging = charging
 
         if self.icon:
-            self.icon.icon = create_icon_image(self.battery, self.sleeping)
+            self.icon.icon = create_icon_image(self.battery, self.sleeping, self.charging)
             self.icon.title = self.get_tooltip()
 
-        if battery is not None and battery <= LOW_BATTERY_THRESHOLD:
+        # 充电中不弹低电量提醒（电量正在回升）
+        if battery is not None and battery <= LOW_BATTERY_THRESHOLD and not self.charging:
             if not self._notified_low:
                 self._notified_low = True
                 if self.icon:
@@ -416,10 +482,10 @@ class TrayApp:
 
             self.update_state(connected=True)
 
-            battery, active = read_battery_once(timeout=3.0)
+            battery, charging, active = read_battery_once(timeout=3.0)
 
             if battery is not None:
-                self.update_state(battery=battery, sleeping=False)
+                self.update_state(battery=battery, charging=charging, sleeping=False)
             elif active is False:
                 self.update_state(sleeping=True)
             else:
@@ -432,10 +498,13 @@ class TrayApp:
     def on_refresh(self, icon, item):
         """手动刷新"""
         def do_refresh():
-            battery, active = read_battery_once(timeout=4.0)
+            battery, charging, active = read_battery_once(timeout=4.0)
             if battery is not None:
-                self.update_state(battery=battery, sleeping=False)
-                icon.notify(tr(self.lang, "current_battery", battery=battery), self.device_name)
+                self.update_state(battery=battery, charging=charging, sleeping=False)
+                msg = tr(self.lang, "current_battery", battery=battery)
+                if charging:
+                    msg += f" ({tr(self.lang, 'charging')})"
+                icon.notify(msg, self.device_name)
             elif not self.connected:
                 icon.notify(tr(self.lang, "no_receiver"), self.device_name)
             elif active is False:
@@ -479,6 +548,15 @@ class TrayApp:
         """打开 GitHub 主页"""
         open_url(GITHUB_URL)
 
+    def on_toggle_autostart(self, icon, item):
+        """切换开机启动状态"""
+        now_on = is_autostart_enabled()
+        ok = set_autostart(not now_on)
+        if ok and self.icon:
+            key = "autostart_disabled" if now_on else "autostart_enabled"
+            self.icon.notify(tr(self.lang, key), self.device_name)
+            self.rebuild_menu()
+
     def on_exit(self, icon, item):
         icon.stop()
 
@@ -513,6 +591,10 @@ class TrayApp:
             pystray.MenuItem(tr(lang, "refresh"), self.on_refresh, default=True),
             pystray.MenuItem(tr(lang, "poll_interval"), pystray.Menu(*interval_items)),
             pystray.MenuItem(tr(lang, "language"), pystray.Menu(*language_items)),
+            pystray.MenuItem(
+                tr(lang, "autostart"), self.on_toggle_autostart,
+                checked=lambda item: is_autostart_enabled(),
+            ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(tr(lang, "github"), self.on_github),
             pystray.MenuItem(tr(lang, "about"), self.on_about),

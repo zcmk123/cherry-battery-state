@@ -12,7 +12,8 @@ Windows 系统托盘工具，实时显示 Cherry 无线键盘电量。**无需�
 - 通过 HID 协议直接读取 dongle 数据，不依赖 Cherry Utility
 - 自动检测设备名称（如 CHERRY MX 2.0S Dongle）
 - 6 档电池图标可视化电量
-- 低电量自动提醒（≤20%）
+- 充电状态检测（插线后图标切换为充电样式，tooltip 显示"充电中"）
+- 低电量自动提醒（≤20%，充电时不提醒）
 - 休眠检测（键盘闲置时图标变暗）
 - 轮询间隔可调（5 / 10 / 20 / 30 / 60 秒，默认 30 秒）
 - 配置持久化，重启后自动恢复
@@ -60,7 +61,7 @@ python cherry_battery.py
 
 1. 通过 `hid.enumerate()` 查找 Cherry dongle 的 vendor-specific 接口（Col04, usage_page=0xFF1C）
 2. 发送电量查询命令 `04 20 00 1A 06`（64 字节 Output Report）
-3. 读取 dongle 返回的状态消息，`byte[8]` 即电量百分比
+3. 读取 dongle 返回的状态消息，`byte[8]` 即电量百分比，`byte[9]` 非零表示充电中
 4. 后台线程按设定间隔轮询，更新托盘图标和 tooltip
 
 命令序列通过 Frida 逆向分析 Cherry 官方软件的 HID 通信得出，详见[开发笔记](#开发笔记)。
